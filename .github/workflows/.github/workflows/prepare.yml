@@ -1,0 +1,52 @@
+name: Prepare Driver On Call
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Create Flutter Android project
+        run: |
+          rm -rf android ios linux macos web windows
+          flutter create --platforms=android --org com.driveroncall --project-name app .
+
+      - name: Extract Driver On Call source
+        run: |
+          mkdir -p /tmp/driver_source
+          unzip -o Driver_On_Call_Project_Source.zip -d /tmp/driver_source
+
+          cp /tmp/driver_source/lib/main.dart lib/main.dart
+          cp /tmp/driver_source/pubspec.yaml pubspec.yaml
+
+          mkdir -p android/app
+          cp /tmp/driver_source/android/app/google-services.json android/app/google-services.json
+
+      - name: Install dependencies
+        run: |
+          flutter pub get
+
+      - name: Commit generated Flutter project
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add .
+          git rm --cached Driver_On_Call_Project_Source.zip 2>/dev/null || true
+          git add -A
+
+          git commit -m "Prepare Flutter Android project" || echo "No changes to commit"
+          git push
