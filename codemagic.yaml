@@ -1,0 +1,44 @@
+workflows:
+  driver-on-call-android:
+    name: Driver On Call Android
+    max_build_duration: 60
+    instance_type: linux_x2
+    environment:
+      flutter: stable
+    scripts:
+      - name: Create Flutter project
+        script: |
+          set -e
+          rm -rf lib android ios web macos windows linux test
+          rm -rf _source
+          mkdir _source
+          unzip -q Driver_On_Call_Project_Source.zip -d _source
+          cp -f _source/android/app/google-services.json /tmp/google-services.json
+          cp -f _source/lib/main.dart lib/main.dart
+          cp -f _source/pubspec.yaml pubspec.yaml
+          flutter create --platforms=android --org com.driveroncall --project-name driver_on_call .
+          mkdir -p android/app
+          cp -f /tmp/google-services.json android/app/google-services.json
+          if [ -f android/app/build.gradle.kts ]; then
+            sed -i 's/namespace = "[^"]*"/namespace = "com.driveroncall.app"/' android/app/build.gradle.kts
+            sed -i 's/applicationId = "[^"]*"/applicationId = "com.driveroncall.app"/' android/app/build.gradle.kts
+          else
+            sed -i 's/namespace "[^"]*"/namespace "com.driveroncall.app"/' android/app/build.gradle
+            sed -i 's/applicationId "[^"]*"/applicationId "com.driveroncall.app"/' android/app/build.gradle
+          fi
+      - name: Configure Firebase Gradle plugin
+        script: |
+          set -e
+          if [ -f android/settings.gradle.kts ]; then
+            sed -i '/com.android.application/ s/$/\n    id("com.google.gms.google-services") version "4.4.3" apply false/' android/settings.gradle.kts
+            sed -i '/com.android.application/ s/$/\n    id("com.google.gms.google-services")/' android/app/build.gradle.kts
+          else
+            sed -i '/com.android.application/ s/$/\n    id "com.google.gms.google-services" version "4.4.3" apply false/' android/settings.gradle
+            sed -i '/com.android.application/ s/$/\n    id "com.google.gms.google-services"/' android/app/build.gradle
+          fi
+      - name: Get packages
+        script: flutter pub get
+      - name: Build debug APK
+        script: flutter build apk --debug
+    artifacts:
+      - build/app/outputs/flutter-apk/*.apk
