@@ -3,61 +3,56 @@ name: Build Driver On Call APK
 on:
   workflow_dispatch:
 
-permissions:
-  contents: read
-
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Flutter
+      - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: stable
           channel: stable
 
-      - name: Prepare Flutter project
-        shell: bash
+      - name: Prepare source
         run: |
-          set -e
-
           rm -rf /tmp/driver_source /tmp/driver_app
-
           mkdir -p /tmp/driver_source
-
           unzip -q Driver_On_Call_Project_Source.zip -d /tmp/driver_source
+          flutter create --platforms=android --org com.driveroncall --project-name app /tmp/driver_app
 
-          flutter create \
-            --platforms=android \
-            --org com.driveroncall \
-            --project-name app \
-            /tmp/driver_app
-
-          cp /tmp/driver_source/pubspec.yaml \
-             /tmp/driver_app/pubspec.yaml
-
-          cp /tmp/driver_source/lib/main.dart \
-             /tmp/driver_app/lib/main.dart
-
+      - name: Copy app source
+        run: |
+          cp /tmp/driver_source/pubspec.yaml /tmp/driver_app/pubspec.yaml
+          cp /tmp/driver_source/lib/main.dart /tmp/driver_app/lib/main.dart
           mkdir -p /tmp/driver_app/android/app
+          cp /tmp/driver_source/android/app/google-services.json /tmp/driver_app/android/app/google-services.json
 
-          cp /tmp/driver_source/android/app/google-services.json \
-             /tmp/driver_app/android/app/google-services.json
-
-          if [ -f /tmp/driver_app/android/app/build.gradle.kts ]; then
-            sed -i 's/namespace = "[^"]*"/namespace = "com.driveroncall.app"/' \
-              /tmp/driver_app/android/app/build.gradle.kts
-
-            sed -i 's/applicationId = "[^"]*"/applicationId = "com.driveroncall.app"/' \
-              /tmp/driver_app/android/app/build.gradle.kts
-          fi
+      - name: Set Android application ID
+        working-directory: /tmp/driver_app/android/app
+        run: |
+          sed -i 's/namespace = "com.example.app"/namespace = "com.driveroncall.app"/' build.gradle.kts
+          sed -i 's/applicationId = "com.example.app"/applicationId = "com.driveroncall.app"/' build.gradle.kts
 
       - name: Get dependencies
         working-directory: /tmp/driver_app
         run: flutter pub get
+
+      - name: Create debug keystore
+        run: |
+          mkdir -p ~/.config/.android
+          keytool -genkeypair -v \
+            -keystore ~/.config/.android/debug.keystore \
+            -storepass android \
+            -alias AndroidDebugKey \
+            -keypass android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
 
       - name: Show Android signing fingerprints
         working-directory: /tmp/driver_app/android
@@ -66,6 +61,7 @@ jobs:
       - name: Build APK
         working-directory: /tmp/driver_app
         run: flutter build apk --debug
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
