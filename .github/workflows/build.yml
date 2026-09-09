@@ -55,14 +55,17 @@ jobs:
               /tmp/driver_app/android/app/build.gradle.kts
           fi
 
-      - name: Get dependencies
-        working-directory: /tmp/driver_app
-        run: flutter pub get
+            - name: Get dependencies
+          working-directory: /tmp/driver_app
+          run: flutter pub get
+
+      - name: Show Android signing fingerprints
+        working-directory: /tmp/driver_app/android
+        run: ./gradlew signingReport
 
       - name: Build APK
         working-directory: /tmp/driver_app
         run: flutter build apk --debug
-
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
