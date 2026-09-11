@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'Driver_On_Call_Admin_Panel_v1.zip'
+      - 'Driver_On_Call_Admin_Panel_v2_Driver_Management.zip'
       - '.github/workflows/admin-panel.yml'
 
 permissions:
