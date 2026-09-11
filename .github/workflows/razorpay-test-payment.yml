@@ -29,6 +29,7 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           RAZORPAY_KEY_ID: ${{ secrets.RAZORPAY_KEY_ID }}
           RAZORPAY_KEY_SECRET: ${{ secrets.RAZORPAY_KEY_SECRET }}
+
         run: |
           node <<'NODE'
           const admin = require("firebase-admin");
@@ -39,9 +40,17 @@ jobs:
           const keyId = process.env.RAZORPAY_KEY_ID;
           const keySecret = process.env.RAZORPAY_KEY_SECRET;
 
-          if (!raw) throw new Error("Missing FIREBASE_SERVICE_ACCOUNT_JSON secret.");
-          if (!keyId) throw new Error("Missing RAZORPAY_KEY_ID secret.");
-          if (!keySecret) throw new Error("Missing RAZORPAY_KEY_SECRET secret.");
+          if (!raw) {
+            throw new Error("Missing FIREBASE_SERVICE_ACCOUNT_JSON secret.");
+          }
+
+          if (!keyId) {
+            throw new Error("Missing RAZORPAY_KEY_ID secret.");
+          }
+
+          if (!keySecret) {
+            throw new Error("Missing RAZORPAY_KEY_SECRET secret.");
+          }
 
           admin.initializeApp({
             credential: admin.credential.cert(JSON.parse(raw)),
@@ -51,7 +60,10 @@ jobs:
 
           function razorpayRequest(method, path, body) {
             return new Promise((resolve, reject) => {
-              const auth = Buffer.from(`${keyId}:${keySecret}`).toString("base64");
+              const auth = Buffer
+                .from(`${keyId}:${keySecret}`)
+                .toString("base64");
+
               const payload = body ? JSON.stringify(body) : null;
 
               const req = https.request(
@@ -62,21 +74,31 @@ jobs:
                   headers: {
                     Authorization: `Basic ${auth}`,
                     "Content-Type": "application/json",
-                    ...(payload ? { "Content-Length": Buffer.byteLength(payload) } : {}),
+                    ...(payload
+                      ? { "Content-Length": Buffer.byteLength(payload) }
+                      : {}),
                   },
                 },
                 (res) => {
                   let data = "";
-                  res.on("data", (chunk) => (data += chunk));
+
+                  res.on("data", (chunk) => {
+                    data += chunk;
+                  });
+
                   res.on("end", () => {
                     let parsed;
+
                     try {
                       parsed = JSON.parse(data);
                     } catch {
                       parsed = { raw: data };
                     }
 
-                    if (res.statusCode >= 200 && res.statusCode < 300) {
+                    if (
+                      res.statusCode >= 200 &&
+                      res.statusCode < 300
+                    ) {
                       resolve(parsed);
                     } else {
                       reject(
@@ -90,7 +112,11 @@ jobs:
               );
 
               req.on("error", reject);
-              if (payload) req.write(payload);
+
+              if (payload) {
+                req.write(payload);
+              }
+
               req.end();
             });
           }
@@ -101,7 +127,9 @@ jobs:
               .update(`${orderId}|${paymentId}`)
               .digest("hex");
 
-            if (expected.length !== signature.length) return false;
+            if (expected.length !== signature.length) {
+              return false;
+            }
 
             return crypto.timingSafeEqual(
               Buffer.from(expected),
@@ -110,10 +138,15 @@ jobs:
           }
 
           async function repairPaidBooking(doc, data) {
-            const bookingId = String(data.bookingId || "").trim();
+            const bookingId = String(
+              data.bookingId || ""
+            ).trim();
+
             if (!bookingId) {
-              console.log(`Paid payment request ${doc.id} has no bookingId.`);
-              return;
+              console.log(
+                `Paid payment request ${doc.id} has no bookingId.`
+              );
+              return false;
             }
 
             try {
@@ -122,23 +155,36 @@ jobs:
                 .doc(bookingId)
                 .update({
                   paymentStatus: "paid",
+
                   ...(data.paymentId
-                    ? { paymentId: String(data.paymentId) }
+                    ? {
+                        paymentId: String(data.paymentId),
+                      }
                     : {}),
+
                   ...(data.orderId
-                    ? { paymentOrderId: String(data.orderId) }
+                    ? {
+                        paymentOrderId: String(data.orderId),
+                      }
                     : {}),
+
                   paidAt:
                     data.verifiedAt ||
                     admin.firestore.FieldValue.serverTimestamp(),
                 });
 
-              console.log(`Booking payment status repaired: ${bookingId}`);
+              console.log(
+                `Booking payment status repaired: ${bookingId}`
+              );
+
+              return true;
             } catch (error) {
               console.error(
                 `Booking payment repair failed for ${doc.id}:`,
                 error.message
               );
+
+              return false;
             }
           }
 
@@ -161,103 +207,198 @@ jobs:
               const status = String(data.status || "");
 
               try {
-                if (status === "created") {
-                  const amountRupees = Number(data.amount || 0);
-                  const amountPaise = Math.round(amountRupees * 100);
 
-                  if (!Number.isFinite(amountPaise) || amountPaise <= 0) {
-                    throw new Error("Invalid payment amount.");
+                // --------------------------------
+                // CREATE RAZORPAY ORDER
+                // --------------------------------
+                if (status === "created") {
+                  const amountRupees = Number(
+                    data.amount || 0
+                  );
+
+                  const amountPaise = Math.round(
+                    amountRupees * 100
+                  );
+
+                  if (
+                    !Number.isFinite(amountPaise) ||
+                    amountPaise <= 0
+                  ) {
+                    throw new Error(
+                      "Invalid payment amount."
+                    );
                   }
 
-                  const receipt = `doco_${doc.id}`.slice(0, 40);
+                  const receipt =
+                    `doco_${doc.id}`.slice(0, 40);
 
-                  const order = await razorpayRequest("POST", "/v1/orders", {
-                    amount: amountPaise,
-                    currency: String(data.currency || "INR"),
-                    receipt,
-                    notes: {
-                      bookingId: String(data.bookingId || ""),
-                      paymentRequestId: doc.id,
-                    },
-                  });
+                  const order =
+                    await razorpayRequest(
+                      "POST",
+                      "/v1/orders",
+                      {
+                        amount: amountPaise,
+                        currency: String(
+                          data.currency || "INR"
+                        ),
+                        receipt,
+
+                        notes: {
+                          bookingId: String(
+                            data.bookingId || ""
+                          ),
+                          paymentRequestId: doc.id,
+                        },
+                      }
+                    );
 
                   await doc.ref.update({
                     status: "order_created",
                     orderId: order.id,
                     amountPaise,
+
                     orderCreatedAt:
-                      admin.firestore.FieldValue.serverTimestamp(),
+                      admin.firestore.FieldValue
+                        .serverTimestamp(),
                   });
 
                   orders++;
-                  console.log(`Order created: ${doc.id} -> ${order.id}`);
-                  continue;
-                }
 
-                if (status === "paid") {
-                  const before = data.paymentStatus;
-                  await repairPaidBooking(doc, data);
-                  if (before !== "paid") repaired++;
-                  continue;
-                }
-
-                if (status === "payment_submitted") {
-                  const orderId = String(
-                    data.razorpayOrderId || data.orderId || ""
-                  ).trim();
-                  const paymentId = String(data.paymentId || "").trim();
-                  const signature = String(data.signature || "").trim();
-
-                  if (!orderId || !paymentId || !signature) {
-                    throw new Error("Missing orderId/paymentId/signature.");
-                  }
-
-                  if (!verifySignature(orderId, paymentId, signature)) {
-                    throw new Error("Invalid Razorpay signature.");
-                  }
-
-                  const payment = await razorpayRequest(
-                    "GET",
-                    `/v1/payments/${encodeURIComponent(paymentId)}`
+                  console.log(
+                    `Order created: ${doc.id} -> ${order.id}`
                   );
 
-                  if (payment.status !== "captured") {
+                  continue;
+                }
+
+                // --------------------------------
+                // REPAIR ALREADY PAID PAYMENT
+                // --------------------------------
+                if (status === "paid") {
+                  const before =
+                    data.paymentStatus;
+
+                  const success =
+                    await repairPaidBooking(
+                      doc,
+                      data
+                    );
+
+                  if (
+                    success &&
+                    before !== "paid"
+                  ) {
+                    repaired++;
+                  }
+
+                  continue;
+                }
+
+                // --------------------------------
+                // VERIFY PAYMENT
+                // --------------------------------
+                if (
+                  status === "payment_submitted"
+                ) {
+                  const orderId = String(
+                    data.razorpayOrderId ||
+                    data.orderId ||
+                    ""
+                  ).trim();
+
+                  const paymentId = String(
+                    data.paymentId || ""
+                  ).trim();
+
+                  const signature = String(
+                    data.signature || ""
+                  ).trim();
+
+                  if (
+                    !orderId ||
+                    !paymentId ||
+                    !signature
+                  ) {
+                    throw new Error(
+                      "Missing orderId/paymentId/signature."
+                    );
+                  }
+
+                  const valid =
+                    verifySignature(
+                      orderId,
+                      paymentId,
+                      signature
+                    );
+
+                  if (!valid) {
+                    throw new Error(
+                      "Invalid Razorpay signature."
+                    );
+                  }
+
+                  const payment =
+                    await razorpayRequest(
+                      "GET",
+                      `/v1/payments/${encodeURIComponent(
+                        paymentId
+                      )}`
+                    );
+
+                  if (
+                    payment.status !== "captured"
+                  ) {
                     console.log(
                       `Payment ${paymentId} status: ${payment.status}`
                     );
+
                     continue;
                   }
 
-                  const bookingId = String(data.bookingId || "").trim();
+                  const bookingId =
+                    String(
+                      data.bookingId || ""
+                    ).trim();
 
-                  // IMPORTANT: update the booking first.
-                  // If this fails, the payment request remains
-                  // payment_submitted and the next worker run retries it.
+                  // IMPORTANT:
+                  // Update booking first.
+                  // If this fails, payment remains
+                  // payment_submitted and will retry
+                  // on the next worker run.
+
                   if (bookingId) {
                     await db
-                      .collection("vehicle_rent_requests")
+                      .collection(
+                        "vehicle_rent_requests"
+                      )
                       .doc(bookingId)
                       .update({
                         paymentStatus: "paid",
                         paymentId,
                         paymentOrderId: orderId,
+
                         paidAt:
-                          admin.firestore.FieldValue.serverTimestamp(),
+                          admin.firestore.FieldValue
+                            .serverTimestamp(),
                       });
                   }
 
                   await doc.ref.update({
                     status: "paid",
                     verification: "verified",
+
                     verifiedAt:
-                      admin.firestore.FieldValue.serverTimestamp(),
+                      admin.firestore.FieldValue
+                        .serverTimestamp(),
                   });
 
                   paid++;
+
                   console.log(
                     `Payment verified: ${doc.id} -> ${paymentId}`
                   );
                 }
+
               } catch (error) {
                 console.error(
                   `Payment worker failed for ${doc.id}:`,
@@ -269,173 +410,6 @@ jobs:
             console.log(
               `Completed. Orders created: ${orders}, Payments verified: ${paid}, Bookings repaired: ${repaired}`
             );
-          }
-
-          main().catch((error) => {
-            console.error(error);
-            process.exit(1);
-          });
-          NODE
-          const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-          const keyId = process.env.RAZORPAY_KEY_ID;
-          const keySecret = process.env.RAZORPAY_KEY_SECRET;
-
-          if (!raw) throw new Error("Missing FIREBASE_SERVICE_ACCOUNT_JSON secret.");
-          if (!keyId) throw new Error("Missing RAZORPAY_KEY_ID secret.");
-          if (!keySecret) throw new Error("Missing RAZORPAY_KEY_SECRET secret.");
-
-          admin.initializeApp({
-            credential: admin.credential.cert(JSON.parse(raw)),
-          });
-
-          const db = admin.firestore();
-
-          function razorpayRequest(method, path, body) {
-            return new Promise((resolve, reject) => {
-              const auth = Buffer.from(`${keyId}:${keySecret}`).toString("base64");
-              const payload = body ? JSON.stringify(body) : null;
-
-              const req = https.request(
-                {
-                  hostname: "api.razorpay.com",
-                  path,
-                  method,
-                  headers: {
-                    Authorization: `Basic ${auth}`,
-                    "Content-Type": "application/json",
-                    ...(payload ? { "Content-Length": Buffer.byteLength(payload) } : {}),
-                  },
-                },
-                (res) => {
-                  let data = "";
-                  res.on("data", (chunk) => (data += chunk));
-                  res.on("end", () => {
-                    let parsed;
-                    try {
-                      parsed = JSON.parse(data);
-                    } catch {
-                      parsed = { raw: data };
-                    }
-
-                    if (res.statusCode >= 200 && res.statusCode < 300) {
-                      resolve(parsed);
-                    } else {
-                      reject(new Error(`Razorpay ${res.statusCode}: ${JSON.stringify(parsed)}`));
-                    }
-                  });
-                }
-              );
-
-              req.on("error", reject);
-              if (payload) req.write(payload);
-              req.end();
-            });
-          }
-
-          async function main() {
-            const snapshot = await db
-              .collection("payment_requests")
-              .where("status", "in", ["created", "payment_submitted"])
-              .get();
-
-            let orders = 0;
-            let paid = 0;
-
-            for (const doc of snapshot.docs) {
-              const data = doc.data();
-              const status = String(data.status || "");
-
-              try {
-                if (status === "created") {
-                  const amountRupees = Number(data.amount || 0);
-                  const amountPaise = Math.round(amountRupees * 100);
-
-                  if (!Number.isFinite(amountPaise) || amountPaise <= 0) {
-                    throw new Error("Invalid payment amount.");
-                  }
-
-                  const receipt = `doco_${doc.id}`.slice(0, 40);
-
-                  const order = await razorpayRequest("POST", "/v1/orders", {
-                    amount: amountPaise,
-                    currency: String(data.currency || "INR"),
-                    receipt,
-                    notes: {
-                      bookingId: String(data.bookingId || ""),
-                      paymentRequestId: doc.id,
-                    },
-                  });
-
-                  await doc.ref.update({
-                    status: "order_created",
-                    orderId: order.id,
-                    amountPaise,
-                    orderCreatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                  });
-
-                  orders++;
-                  console.log(`Order created: ${doc.id} -> ${order.id}`);
-                  continue;
-                }
-
-                if (status === "payment_submitted") {
-                  const orderId = String(data.razorpayOrderId || data.orderId || "").trim();
-                  const paymentId = String(data.paymentId || "").trim();
-                  const signature = String(data.signature || "").trim();
-
-                  if (!orderId || !paymentId || !signature) {
-                    throw new Error("Missing orderId/paymentId/signature.");
-                  }
-
-                  const expected = crypto
-                    .createHmac("sha256", keySecret)
-                    .update(`${orderId}|${paymentId}`)
-                    .digest("hex");
-
-                  const valid = crypto.timingSafeEqual(
-                    Buffer.from(expected),
-                    Buffer.from(signature)
-                  );
-
-                  if (!valid) {
-                    throw new Error("Invalid Razorpay signature.");
-                  }
-
-                  const payment = await razorpayRequest(
-                    "GET",
-                    `/v1/payments/${encodeURIComponent(paymentId)}`
-                  );
-
-                  if (payment.status !== "captured") {
-                    console.log(`Payment ${paymentId} status: ${payment.status}`);
-                    continue;
-                  }
-
-                  await doc.ref.update({
-                    status: "paid",
-                    verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
-                  });
-
-                  const bookingId = String(data.bookingId || "").trim();
-
-                  if (bookingId) {
-                    await db.collection("vehicle_rent_requests").doc(bookingId).update({
-                      paymentStatus: "paid",
-                      paymentId,
-                      paymentOrderId: orderId,
-                      paidAt: admin.firestore.FieldValue.serverTimestamp(),
-                    });
-                  }
-
-                  paid++;
-                  console.log(`Payment verified: ${doc.id} -> ${paymentId}`);
-                }
-              } catch (error) {
-                console.error(`Payment worker failed for ${doc.id}:`, error.message);
-              }
-            }
-
-            console.log(`Completed. Orders created: ${orders}, Payments verified: ${paid}`);
           }
 
           main().catch((error) => {
