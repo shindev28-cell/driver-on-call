@@ -1,0 +1,13 @@
+{
+  "name": "driver-on-call-fcm-worker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Driver On Call FCM notification worker",
+  "main": "notify.js",
+  "scripts": {
+    "notify": "node notify.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.5.0"
+  }
+}
