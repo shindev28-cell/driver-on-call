@@ -31,8 +31,7 @@ jobs:
       - name: Extract Admin Panel
         run: |
           mkdir -p admin_panel
-          unzip -o Driver_On_Call_Admin_Panel_v1.zip -d admin_panel
-
+          unzip -o Driver_On_Call_Admin_Panel_v2_Driver_Management.zip -d admin_panel
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
