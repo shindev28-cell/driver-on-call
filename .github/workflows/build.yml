@@ -28,7 +28,7 @@ jobs:
           cp /tmp/driver_source/lib/main.dart /tmp/driver_app/lib/main.dart
           mkdir -p /tmp/driver_app/android/app
           cp /tmp/driver_source/android/app/google-services.json /tmp/driver_app/android/app/google-services.json
-                    
+                   sed -i "/Text('₹\$total • \$days दिवस • Status:/c\                      Text('₹' + total + ' • ' + days + ' दिवस • Status: ' + status.toUpperCase() + ' • 💳 Payment: ' + ((d['paymentStatus'] ?? 'unpaid').toString().toUpperCase()))," /tmp/driver_app/lib/main.dart           
       - name: Set Android application ID
         working-directory: /tmp/driver_app/android/app
         run: |
