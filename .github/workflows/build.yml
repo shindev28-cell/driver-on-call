@@ -20,52 +20,7 @@ jobs:
           rm -rf /tmp/driver_source /tmp/driver_app
           mkdir -p /tmp/driver_source
           unzip -q Driver_On_Call_Project_Source_v41_Driver_Registration_Firestore.zip -d /tmp/driver_source
-                    python3 - <<'PY'
-          from pathlib import Path
-
-          p = Path('/tmp/driver_source/lib/main.dart')
-          s = p.read_text()
-
-          old = """                      Text('Pickup: ${(d['pickupLocation'] ?? '—').toString()}'),
-          """
-
-          new = """                      Text('Pickup: ${(d['pickupLocation'] ?? '—').toString()}'),
-                      if (status == 'accepted') ...[
-                        const SizedBox(height: 8),
-                        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                          stream: FirebaseFirestore.instance
-                              .collection('payment_requests')
-                              .where('bookingId', isEqualTo: doc.id)
-                              .limit(10)
-                              .snapshots(),
-                          builder: (context, paymentSnap) {
-                            final paid = (paymentSnap.data?.docs ?? const [])
-                                .any((x) =>
-                                    (x.data()['status'] ?? '')
-                                        .toString()
-                                        .toLowerCase() ==
-                                    'paid');
-
-                            return Text(
-                              paid
-                                  ? '💳 Payment: PAID ✅'
-                                  : '💳 Payment: PENDING',
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w700),
-                            );
-                          },
-                        ),
-                      ],
-          """
-
-          if old not in s:
-              raise SystemExit('Payment display location not found')
-
-          s = s.replace(old, new, 1)
-          p.write_text(s)
-
-          print('Owner payment status patch applied ✅')
-          PYflutter create --platforms=android --org com.driveroncall --project-name app /tmp/driver_app
+                   flutter create --platforms=android --org com.driveroncall --project-name app /tmp/driver_app
 
       - name: Copy app source
         run: |
